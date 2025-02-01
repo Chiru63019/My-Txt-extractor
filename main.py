@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 import os
 
 # Replace with your Telegram Bot Token
-BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7979826252:AAG6PkktURFL-udAd3KipzwiFXp6FEQDbCg')
+BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7407487191:AAHE2jOqIQx3X9sU6jp6_PGV_BihtHke_ds')
 
 # Replace with your website's login URL and course URL
 LOGIN_URL = os.getenv('LOGIN_URL', 'https://app.khanglobalstudies.com/')
@@ -57,12 +57,12 @@ def save_links_to_file(video_links, pdf_links, filename='course_links.txt'):
 # Telegram bot command: /start
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Welcome! Use /setcredentials to set your username and password.")
+    bot.send_message(message.chat.id, "Welcome! Use /setcredentials to set your username and password.")
 
 # Telegram bot command: /setcredentials
 @bot.message_handler(commands=['setcredentials'])
 def ask_for_credentials(message):
-    msg = bot.reply_to(message, "Please enter your username and password in the format:\n`username:password`")
+    msg = bot.send_message(message.chat.id, "Please enter your username and password in the format:\n`username:password`")
     bot.register_next_step_handler(msg, process_credentials)
 
 # Process credentials input
@@ -70,46 +70,46 @@ def process_credentials(message):
     try:
         credentials = message.text.split(':')
         if len(credentials) != 2:
-            bot.reply_to(message, "Invalid format. Please use `username:password`.")
+            bot.send_message(message.chat.id, "Invalid format. Please use `username:password`.")
             return
         
         username, password = credentials
         user_credentials['username'] = username.strip()
         user_credentials['password'] = password.strip()
         
-        bot.reply_to(message, "Credentials saved successfully! Use /login to log in.")
+        bot.send_message(message.chat.id, "Credentials saved successfully! Use /login to log in.")
     except Exception as e:
-        bot.reply_to(message, f"An error occurred: {e}")
+        bot.send_message(message.chat.id, f"An error occurred: {e}")
 
 # Telegram bot command: /login
 @bot.message_handler(commands=['login'])
 def handle_login(message):
     if 'username' not in user_credentials or 'password' not in user_credentials:
-        bot.reply_to(message, "Credentials not set. Use /setcredentials first.")
+        bot.send_message(message.chat.id, "Credentials not set. Use /setcredentials first.")
         return
     
     if login(user_credentials['username'], user_credentials['password']):
-        bot.reply_to(message, "Logged in successfully!")
+        bot.send_message(message.chat.id, "Logged in successfully!")
     else:
-        bot.reply_to(message, "Failed to log in. Please check your credentials.")
+        bot.send_message(message.chat.id, "Failed to log in. Please check your credentials.")
 
 # Telegram bot command: /getlinks
 @bot.message_handler(commands=['getlinks'])
 def handle_getlinks(message):
     if 'username' not in user_credentials or 'password' not in user_credentials:
-        bot.reply_to(message, "Credentials not set. Use /setcredentials first.")
+        bot.send_message(message.chat.id, "Credentials not set. Use /setcredentials first.")
         return
     
     if not login(user_credentials['username'], user_credentials['password']):
-        bot.reply_to(message, "Failed to log in. Please check your credentials.")
+        bot.send_message(message.chat.id, "Failed to log in. Please check your credentials.")
         return
     
     video_links, pdf_links = extract_links()
     if video_links or pdf_links:
         save_links_to_file(video_links, pdf_links)
-        bot.reply_to(message, "Links extracted and saved to course_links.txt")
+        bot.send_message(message.chat.id, "Links extracted and saved to course_links.txt")
     else:
-        bot.reply_to(message, "No links found.")
+        bot.send_message(message.chat.id, "No links found.")
 
 # Start the bot
 if __name__ == '__main__':
