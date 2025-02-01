@@ -14,8 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Environment variables
-ENV TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
-ENV LOGIN_URL=https://example.com/login
+ENV TELEGRAM_BOT_TOKEN=7979826252:AAG6PkktURFL-udAd3KipzwiFXp6FEQDbCg
+ENV LOGIN_URL=https://app.khanglobalstudies.com/
 ENV COURSE_URL=https://example.com/course
 ENV WEBSITE_USERNAME=your_username
 ENV WEBSITE_PASSWORD=your_password
