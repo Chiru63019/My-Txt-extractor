@@ -12,5 +12,5 @@ This Telegram bot logs into a website, extracts course video and PDF links, and 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/telegram-bot.git
+   git clone https://github.com/indianup/My-Txt-extractor.git
    cd telegram-bot
