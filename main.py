@@ -4,10 +4,10 @@ from bs4 import BeautifulSoup
 import os
 
 # Replace with your Telegram Bot Token
-BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', 'YOUR_TELEGRAM_BOT_TOKEN')
+BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7979826252:AAG6PkktURFL-udAd3KipzwiFXp6FEQDbCg')
 
 # Replace with your website's login URL and course URL
-LOGIN_URL = os.getenv('LOGIN_URL', 'https://example.com/login')
+LOGIN_URL = os.getenv('LOGIN_URL', 'https://app.khanglobalstudies.com/')
 COURSE_URL = os.getenv('COURSE_URL', 'https://example.com/course')
 
 # Initialize the bot
