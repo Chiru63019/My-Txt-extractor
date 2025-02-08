@@ -1,5 +1,5 @@
 # Telegram 
-BOT_TOKEN = '7407487191:AAHE2jOqIQx3X9sU6jp6_PGV_BihtHke_ds'
+TELEGRAM_BOT_TOKEN = '7407487191:AAHE2jOqIQx3X9sU6jp6_PGV_BihtHke_ds'
 
 # Conversation States
 LOGIN, COURSE_SELECTION = range(2)
