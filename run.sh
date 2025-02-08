@@ -1,11 +1,14 @@
+
 #!/bin/bash
 
-# Set environment variables
-export TELEGRAM_BOT_TOKEN="7979826252:AAG6PkktURFL-udAd3KipzwiFXp6FEQDbCg"
-export LOGIN_URL="https://app.khanglobalstudies.com/"
-export COURSE_URL="https://example.com/course"
-export WEBSITE_USERNAME="your_username"
-export WEBSITE_PASSWORD="your_password"
+# Check if Python is installed
+if ! command -v python3 &> /dev/null; then
+    echo "Python3 is not installed"
+    exit 1
+fi
 
-# Run the bot
-python main.py
+# Install dependencies if not already installed
+pip install -r requirements.txt
+
+# Start the bot
+python3 app.py
