@@ -1,24 +1,22 @@
-# Use an official Python runtime as a parent image
-FROM python:3.9-slim
 
-# Set the working directory in the container
+# Use Python 3.11 as base image
+FROM python:3.11-slim
+
+# Set working directory
 WORKDIR /app
 
-# Copy the requirements file into the container
-COPY requirements.txt .
-
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the current directory contents into the container
+# Copy project files
 COPY . .
 
-# Environment variables
-ENV TELEGRAM_BOT_TOKEN=7979826252:AAG6PkktURFL-udAd3KipzwiFXp6FEQDbCg
-ENV LOGIN_URL=https://app.khanglobalstudies.com/
-ENV COURSE_URL=https://example.com/course
-ENV WEBSITE_USERNAME=your_username
-ENV WEBSITE_PASSWORD=your_password
+# Install dependencies
+RUN pip install -r requirements.txt
 
-# Run the bot script
-CMD ["python", "main.py"]
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
+
+# Expose port
+EXPOSE 8080
+
+# Run the application
+CMD ["python", "app.py"]
