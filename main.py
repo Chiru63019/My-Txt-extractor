@@ -1,116 +1,187 @@
-import telebot
-import requests
-from bs4 import BeautifulSoup
 import os
+import logging
+import asyncio
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+import aiohttp
+from bs4 import BeautifulSoup
 
-# Replace with your Telegram Bot Token
-BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7407487191:AAHE2jOqIQx3X9sU6jp6_PGV_BihtHke_ds')
+# Enable logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Replace with your website's login URL and course URL
-LOGIN_URL = os.getenv('LOGIN_URL', 'https://app.khanglobalstudies.com/')
-COURSE_URL = os.getenv('COURSE_URL', 'https://example.com/course')
+# States
+LOGIN, COURSE_SELECTION = range(2)
 
-# Initialize the bot
-bot = telebot.TeleBot(BOT_TOKEN)
+# Store user data
+user_data = {}
 
-# Session to persist cookies
-session = requests.Session()
 
-# Global variables to store credentials
-user_credentials = {}
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "Welcome! Please send your login credentials in this format:\n"
+        "email password")
+    return LOGIN
 
-# Function to log in to the website
-def login(username, password):
-    login_data = {
-        'username': username,
-        'password': password
-    }
-    response = session.post(LOGIN_URL, data=login_data)
-    if response.status_code == 200:
-        return True
-    else:
-        return False
 
-# Function to extract video and PDF links
-def extract_links():
-    response = session.get(COURSE_URL)
-    soup = BeautifulSoup(response.content, 'html.parser')
-    
-    # Extract video links (adjust selectors as needed)
-    video_links = [a['href'] for a in soup.select('a[href*="video"]')]
-    
-    # Extract PDF links (adjust selectors as needed)
-    pdf_links = [a['href'] for a in soup.select('a[href*="pdf"]')]
-    
-    return video_links, pdf_links
+async def login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user = update.message.from_user
+    credentials = update.message.text.split()
 
-# Function to save links to a text file
-def save_links_to_file(video_links, pdf_links, filename='course_links.txt'):
-    with open(filename, 'w') as f:
-        f.write("Video Links:\n")
-        for link in video_links:
-            f.write(link + '\n')
-        f.write("\nPDF Links:\n")
-        for link in pdf_links:
-            f.write(link + '\n')
+    if len(credentials) != 2:
+        await update.message.reply_text(
+            "Please provide both email and password separated by space.")
+        return LOGIN
 
-# Telegram bot command: /start
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.send_message(message.chat.id, "Welcome! Use /setcredentials to set your username and password.")
+    email, password = credentials
 
-# Telegram bot command: /setcredentials
-@bot.message_handler(commands=['setcredentials'])
-def ask_for_credentials(message):
-    msg = bot.send_message(message.chat.id, "Please enter your username and password in the format:\n`username:password`")
-    bot.register_next_step_handler(msg, process_credentials)
+    # Store credentials in user_data
+    context.user_data['credentials'] = {'email': email, 'password': password}
 
-# Process credentials input
-def process_credentials(message):
-    try:
-        credentials = message.text.split(':')
-        if len(credentials) != 2:
-            bot.send_message(message.chat.id, "Invalid format. Please use `username:password`.")
-            return
-        
-        username, password = credentials
-        user_credentials['username'] = username.strip()
-        user_credentials['password'] = password.strip()
-        
-        bot.send_message(message.chat.id, "Credentials saved successfully! Use /login to log in.")
-    except Exception as e:
-        bot.send_message(message.chat.id, f"An error occurred: {e}")
+    # Login to the website
+    async with aiohttp.ClientSession() as session:
+        try:
+            # First get the login page to get any CSRF token if needed
+            async with session.get(
+                    'https://app.khanglobalstudies.com/login') as response:
+                html = await response.text()
 
-# Telegram bot command: /login
-@bot.message_handler(commands=['login'])
-def handle_login(message):
-    if 'username' not in user_credentials or 'password' not in user_credentials:
-        bot.send_message(message.chat.id, "Credentials not set. Use /setcredentials first.")
-        return
-    
-    if login(user_credentials['username'], user_credentials['password']):
-        bot.send_message(message.chat.id, "Logged in successfully!")
-    else:
-        bot.send_message(message.chat.id, "Failed to log in. Please check your credentials.")
+            # Perform login
+            login_data = {'email': email, 'password': password}
+            async with session.post('https://app.khanglobalstudies.com/login',
+                                    data=login_data) as response:
+                if response.status == 200:
+                    # Get course list
+                    async with session.get(
+                            'https://app.khanglobalstudies.com/dashboard'
+                    ) as courses_response:
+                        courses_html = await courses_response.text()
+                        soup = BeautifulSoup(courses_html, 'html.parser')
+                        courses = soup.find_all(
+                            'div', class_='course-card'
+                        )  # Adjust class based on actual HTML
 
-# Telegram bot command: /getlinks
-@bot.message_handler(commands=['getlinks'])
-def handle_getlinks(message):
-    if 'username' not in user_credentials or 'password' not in user_credentials:
-        bot.send_message(message.chat.id, "Credentials not set. Use /setcredentials first.")
-        return
-    
-    if not login(user_credentials['username'], user_credentials['password']):
-        bot.send_message(message.chat.id, "Failed to log in. Please check your credentials.")
-        return
-    
-    video_links, pdf_links = extract_links()
-    if video_links or pdf_links:
-        save_links_to_file(video_links, pdf_links)
-        bot.send_message(message.chat.id, "Links extracted and saved to course_links.txt")
-    else:
-        bot.send_message(message.chat.id, "No links found.")
+                        course_list = []
+                        for course in courses:
+                            course_id = course.get(
+                                'data-course-id',
+                                '')  # Adjust based on actual HTML
+                            course_name = course.find('h3').text.strip(
+                            )  # Adjust based on actual HTML
+                            course_list.append(
+                                f"ID: {course_id} - {course_name}")
 
-# Start the bot
+                        context.user_data['courses'] = course_list
+
+                        await update.message.reply_text(
+                            "Here are your courses:\n" +
+                            "\n".join(course_list) +
+                            "\n\nPlease send the course ID you want to extract:"
+                        )
+                        return COURSE_SELECTION
+                else:
+                    await update.message.reply_text(
+                        "Login failed. Please try again with correct credentials."
+                    )
+                    return LOGIN
+
+        except Exception as e:
+            logger.error(f"Error during login: {e}")
+            await update.message.reply_text(
+                "An error occurred. Please try again.")
+            return LOGIN
+
+
+async def extract_course(update: Update,
+                         context: ContextTypes.DEFAULT_TYPE) -> int:
+    course_id = update.message.text.strip()
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            # Use stored credentials
+            credentials = context.user_data['credentials']
+
+            # Login again to ensure session is valid
+            login_data = {
+                'email': credentials['email'],
+                'password': credentials['password']
+            }
+            await session.post('https://app.khanglobalstudies.com/login',
+                               data=login_data)
+
+            # Get course content
+            async with session.get(
+                f'https://app.khanglobalstudies.com/course/{course_id}'
+            ) as response:
+                course_html = await response.text()
+                soup = BeautifulSoup(course_html, 'html.parser')
+
+                # Extract links (adjust selectors based on actual HTML)
+                video_links = [
+                    a['href'] for a in soup.find_all('a', href=True)
+                    if 'video' in a['href'].lower()
+                ]
+                pdf_links = [
+                    a['href'] for a in soup.find_all('a', href=True)
+                    if '.pdf' in a['href'].lower()
+                ]
+
+                # Create text file with links
+                with open(f'course_{course_id}_links.txt', 'w') as f:
+                    f.write("Video Links:\n")
+                    f.write('\n'.join(video_links))
+                    f.write("\n\nPDF Links:\n")
+                    f.write('\n'.join(pdf_links))
+
+                # Send file to user
+                await update.message.reply_document(
+                    document=open(f'course_{course_id}_links.txt', 'rb'),
+                    filename=f'course_{course_id}_links.txt')
+
+                # Cleanup
+                os.remove(f'course_{course_id}_links.txt')
+
+                await update.message.reply_text(
+                    "Extraction complete! You can start a new extraction with /start"
+                )
+                return ConversationHandler.END
+
+        except Exception as e:
+            logger.error(f"Error during course extraction: {e}")
+            await update.message.reply_text(
+                "An error occurred. Please try again with /start")
+            return ConversationHandler.END
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "Operation cancelled. Use /start to begin again.")
+    return ConversationHandler.END
+
+
+def main() -> None:
+    # Create application
+    application = Application.builder().token(
+        'YOUR_TELEGRAM_BOT_TOKEN').build()
+
+    # Add conversation handler
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, login)],
+            COURSE_SELECTION:
+            [MessageHandler(filters.TEXT & ~filters.COMMAND, extract_course)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    application.add_handler(conv_handler)
+
+    # Run the bot
+    application.run_polling()
+
+
 if __name__ == '__main__':
-    bot.polling()
+    main()
