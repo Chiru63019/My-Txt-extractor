@@ -1,22 +1,6 @@
-
-# Use Python 3.11 as base image
-FROM python:3.11-slim
-
-# Set working directory
+FROM python:3.9
 WORKDIR /app
-
-# Copy project files
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-
-# Install dependencies
-RUN pip install -r requirements.txt
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PORT=8080
-
-# Expose port
-EXPOSE 8080
-
-# Run the application
-CMD ["python", "app.py"]
+CMD ["python", "bot.py"]
