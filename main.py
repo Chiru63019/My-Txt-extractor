@@ -2,9 +2,9 @@ from pyrogram import Client, filters
 import requests, os, asyncio, threading
 from Extractor import app
 
-api_id = "YOUR_API_ID"
-api_hash = "YOUR_API_HASH"
-bot_token = "YOUR_BOT_TOKEN"
+api_id = "21705536"
+api_hash = "c5bb241f6e3ecf33fe68a444e288de2d"
+bot_token = "7734332695:AAH41Un36PQ5PXW15i9RQ5ANGdXCcnnS7kA"
 
 app = Client("classplus_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
 
