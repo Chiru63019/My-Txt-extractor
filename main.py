@@ -1,220 +1,117 @@
-# core.py
-import os
-import logging
-import asyncio
-import telegram
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
-import aiohttp
-from bs4 import BeautifulSoup
+from pyrogram import Client, filters
+import requests, os, asyncio, threading
+from Extractor import app
 
-# Enable logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+api_id = "YOUR_API_ID"
+api_hash = "YOUR_API_HASH"
+bot_token = "YOUR_BOT_TOKEN"
 
-# States
-LOGIN, COURSE_SELECTION = range(2)
+app = Client("classplus_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
 
-class TelegramBot:
-    def __init__(self, token='YOUR_TELEGRAM_BOT_TOKEN'):
-        self.token = token
-        self.application = None
-        self.user_data = {}
+api = 'https://api.classplusapp.com/v2'
 
-    async def start(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        await update.message.reply_text(
-            "Welcome! Please send your login credentials in this format:\n"
-            "email password"
-        )
-        return LOGIN
+headers = {
+    "Host": "api.classplusapp.com",
+    "x-access-token": "",
+    "User-Agent": "Mobile-Android",
+    "Accept": "application/json, text/plain, */*",
+    "Origin": "https://web.classplusapp.com",
+    "Referer": "https://web.classplusapp.com/",
+    "Region": "IN",
+}
 
-    async def login(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        user = update.message.from_user
-        credentials = update.message.text.split()
 
-        if len(credentials) != 2:
-            await update.message.reply_text(
-                "Please provide both email and password separated by space."
-            )
-            return LOGIN
+def get_course_content(course_id, folder_id=0):
+    fetched_contents = ""
+    params = {'courseId': course_id, 'folderId': folder_id}
+    res = requests.get(f'{api}/course/content/get', headers=headers, params=params)
+    if res.status_code == 200:
+        res_json = res.json()
+        contents = res_json.get('data', {}).get('courseContent', [])
+        for content in contents:
+            if content['contentType'] == 1:
+                sub_contents = get_course_content(course_id, content['id'])
+                fetched_contents += sub_contents
+            elif content['contentType'] == 2:
+                name = content.get('name', '')
+                url = requests.get(f'{api}/cams/uploader/video/jw-signed-url', headers=headers, params={'contentId': content['contentHashId']}).json()['url']
+                fetched_contents += f'{name}:{url}\n'
+            else:
+                fetched_contents += f"{content.get('name', '')}:{content.get('url', '')}\n"
+    return fetched_contents
 
-        email, password = credentials
 
-        # Store credentials in user_data
-        context.user_data['credentials'] = {'email': email, 'password': password}
+@app.on_message(filters.command("login"))
+async def classplus_login(client, message):
+    try:
+        input_msg = await message.reply_text("Send your credentials as shown below:\n\nORG CODE:\nMOBILE NUMBER:\n\nOR\n\nACCESS TOKEN:")
+        input_response = await client.listen(message.chat.id)
+        creds = input_response.text.strip()
 
-        # Login to the website
-        async with aiohttp.ClientSession() as session:
-            try:
-                # First get the login page to get any CSRF token if needed
-                async with session.get(
-                        'https://app.khanglobalstudies.com/login') as response:
-                    html = await response.text()
-
-                # Perform login
-                login_data = {'email': email, 'password': password}
-                async with session.post('https://app.khanglobalstudies.com/login',
-                                        data=login_data) as response:
-                    if response.status == 200:
-                        # Get course list
-                        async with session.get(
-                                'https://app.khanglobalstudies.com/dashboard'
-                        ) as courses_response:
-                            courses_html = await courses_response.text()
-                            soup = BeautifulSoup(courses_html, 'html.parser')
-                            courses = soup.find_all(
-                                'div', class_='course-card'
-                            )  # Adjust class based on actual HTML
-
-                            course_list = []
-                            for course in courses:
-                                course_id = course.get(
-                                    'data-course-id',
-                                    ''
-                                )  # Adjust based on actual HTML
-                                course_name = course.find('h3').text.strip(
-                                )  # Adjust based on actual HTML
-                                course_list.append(
-                                    f"ID: {course_id} - {course_name}"
-                                )
-
-                            context.user_data['courses'] = course_list
-
-                            await update.message.reply_text(
-                                "Here are your courses:\n" +
-                                "\n".join(course_list) +
-                                "\n\nPlease send the course ID you want to extract:"
-                            )
-                            return COURSE_SELECTION
+        if '\n' in creds:
+            org_code, phone_no = [cred.strip() for cred in creds.split('\n')]
+            res = requests.get(f'{api}/orgs/{org_code}')
+            if res.status_code == 200:
+                org_id = res.json()['data']['orgId']
+                data = {'countryExt': '91', 'mobile': phone_no, 'orgCode': org_code, 'orgId': org_id, 'viaSms': 1}
+                res = requests.post(f'{api}/otp/generate', data=data, headers=headers)
+                if res.status_code == 200:
+                    otp_msg = await message.reply_text("Send your OTP:")
+                    otp_response = await client.listen(message.chat.id)
+                    otp = otp_response.text.strip()
+                    data = {"otp": otp, "countryExt": "91", "sessionId": res.json()['data']['sessionId'], "orgId": org_id, "mobile": phone_no}
+                    res = requests.post(f'{api}/users/verify', data=data, headers=headers)
+                    if res.status_code == 200:
+                        token = res.json()['data']['token']
+                        headers['x-access-token'] = token
+                        await message.reply_text(f"Login Successful! Token:\n`{token}`\n\nSend /courses to continue.")
                     else:
-                        await update.message.reply_text(
-                            "Login failed. Please try again with correct credentials."
-                        )
-                        return LOGIN
-
-            except Exception as e:
-                logger.error(f"Error during login: {e}")
-                await update.message.reply_text(
-                    "An error occurred. Please try again."
-                )
-                return LOGIN
-
-    async def extract_course(self, update: telegram.Update,
-                             context: ContextTypes.DEFAULT_TYPE) -> int:
-        course_id = update.message.text.strip()
-
-        async with aiohttp.ClientSession() as session:
-            try:
-                # Use stored credentials
-                credentials = context.user_data['credentials']
-
-                # Login again to ensure session is valid
-                login_data = {
-                    'email': credentials['email'],
-                    'password': credentials['password']
-                }
-                await session.post('https://app.khanglobalstudies.com/login',
-                                   data=login_data)
-
-                # Get course content
-                async with session.get(
-                        f'https://app.khanglobalstudies.com/course/{course_id}'
-                ) as response:
-                    course_html = await response.text()
-                    soup = BeautifulSoup(course_html, 'html.parser')
-
-                    # Extract links (adjust selectors based on actual HTML)
-                    video_links = [
-                        a['href'] for a in soup.find_all('a', href=True)
-                        if 'video' in a['href'].lower()
-                    ]
-                    pdf_links = [
-                        a['href'] for a in soup.find_all('a', href=True)
-                        if '.pdf' in a['href'].lower()
-                    ]
-
-                    # Create text file with links
-                    with open(f'course_{course_id}_links.txt', 'w') as f:
-                        f.write("Video Links:\n")
-                        f.write('\n'.join(video_links))
-                        f.write("\n\nPDF Links:\n")
-                        f.write('\n'.join(pdf_links))
-
-                    # Send file to user
-                    await update.message.reply_document(
-                        document=open(f'course_{course_id}_links.txt', 'rb'),
-                        filename=f'course_{course_id}_links.txt'
-                    )
-
-                    # Cleanup
-                    os.remove(f'course_{course_id}_links.txt')
-
-                    await update.message.reply_text(
-                        "Extraction complete! You can start a new extraction with /start"
-                    )
-                    return ConversationHandler.END
-
-            except Exception as e:
-                logger.error(f"Error during course extraction: {e}")
-                await update.message.reply_text(
-                    "An error occurred. Please try again with /start"
-                )
-                return ConversationHandler.END
-
-    async def cancel(self, update: telegram.Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        await update.message.reply_text(
-            "Operation cancelled. Use /start to begin again."
-        )
-        return ConversationHandler.END
-
-    def run(self):
-        # Create application
-        self.application = Application.builder().token(self.token).build()
-
-        # Add conversation handler
-        conv_handler = ConversationHandler(
-            entry_points=[CommandHandler('start', self.start)],
-            states={
-                LOGIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.login)],
-                COURSE_SELECTION:
-                [MessageHandler(filters.TEXT & ~filters.COMMAND, self.extract_course)],
-            },
-            fallbacks=[CommandHandler('cancel', self.cancel)],
-        )
-
-        self.application.add_handler(conv_handler)
-
-        # Run the bot
-        self.application.run_polling()
+                        await message.reply_text("OTP Verification Failed.")
+                else:
+                    await message.reply_text("Failed to generate OTP.")
+            else:
+                await message.reply_text("Invalid ORG Code.")
+        else:
+            token = creds.strip()
+            headers['x-access-token'] = token
+            res = requests.get(f'{api}/users/details', headers=headers)
+            if res.status_code == 200:
+                await message.reply_text("Login Successful! Send /courses to continue.")
+            else:
+                await message.reply_text("Invalid Token. Try Again.")
+    except Exception as e:
+        await message.reply_text(f"Error: {e}")
 
 
-# main.py
-from core import TelegramBot
+@app.on_message(filters.command("courses"))
+async def classplus_courses(client, message):
+    try:
+        user_id = headers.get('x-access-token')
+        res = requests.get(f'{api}/profiles/users/data', headers=headers, params={'userId': user_id, 'tabCategoryId': 3})
+        if res.status_code == 200:
+            courses = res.json()['data']['responseData']['coursesData']
+            if courses:
+                text = '\n'.join([f"{i+1}. {course['name']}" for i, course in enumerate(courses)])
+                num = await message.reply_text(f"Send the index number of the course to download:\n\n{text}")
+                num_response = await client.listen(message.chat.id)
+                selected_course_index = int(num_response.text.strip()) - 1
+                course_id = courses[selected_course_index]['id']
+                course_name = courses[selected_course_index]['name']
+                msg = await message.reply_text("Extracting course content...")
+                course_content = get_course_content(course_id)
+                await msg.delete()
+                if course_content:
+                    with open("Classplus.txt", 'w') as f:
+                        f.write(course_content)
+                    await message.reply_document("Classplus.txt", caption=f"Batch Name: {course_name}")
+                    os.remove("Classplus.txt")
+                else:
+                    await message.reply_text("No content found in the course.")
+            else:
+                await message.reply_text("No courses found.")
+        else:
+            await message.reply_text("Failed to fetch courses.")
+    except Exception as e:
+        await message.reply_text(f"Error: {e}")
 
-from aiohttp import web
-import asyncio
-
-async def health_check(request):
-    return web.Response(text='OK')
-
-async def run_web_server():
-    app = web.Application()
-    app.router.add_get('/health', health_check)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8080)
-    await site.start()
-
-async def main():
-    bot = TelegramBot()
-    
-    # Start both the bot and web server
-    await asyncio.gather(
-        run_web_server(),
-        bot.application.run_polling(allowed_updates=Update.ALL_TYPES)
-    )
-
-if __name__ == '__main__':
-    asyncio.run(main())
+app.run()
