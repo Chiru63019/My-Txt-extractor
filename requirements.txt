@@ -3,3 +3,7 @@ python-telegram-bot>=21.10
 aiohttp>=3.11.12
 beautifulsoup4>=4.13.3
 requests>=2.32.3
+pyrogram
+requests
+asyncio
+threading
