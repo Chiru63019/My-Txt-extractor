@@ -4,7 +4,7 @@ from Extractor import app
 
 api_id = "21705536"
 api_hash = "c5bb241f6e3ecf33fe68a444e288de2d"
-bot_token = "7734332695:AAH41Un36PQ5PXW15i9RQ5ANGdXCcnnS7kA"
+bot_token = "7922393246:AAH2g2hQ_ly-DI0nMoH9fxmgzimTNkX3JLk"
 
 app = Client("classplus_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
 
